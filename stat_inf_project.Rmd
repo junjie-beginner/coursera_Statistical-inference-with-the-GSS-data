@@ -1,0 +1,158 @@
+---
+title: "Statistical inference with the GSS data"
+author: 'John Wu'
+date: '2020.05.06'
+output:
+  html_document:
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+  pdf_document: default
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+1.Data Information
+GSS stands for the General Social Survey,Since 1972,It has been monitoring societal change and studying the growing complexity of American society. The GSS aims to gather data on contemporary American society in order to monitor and explain trends and constants in attitudes, behaviors, and attributes; to examine the structure and functioning of society in general as well as the role played by relevant subgroups; to compare the United States to other societies in order to place American society in comparative perspective and develop cross-national models of human society; and to make high-quality data easily accessible to scholars, students, policy makers, and others, with minimal cost and waiting.
+
+2.About Generabizability:
+This survey is conducted by random sampling, so the result from this project can be generalized to the entire US population.
+
+3.About Causality:
+Since this is only an observation, not a random assignment experiment, we can not conclude causality between variables in this dataset.
+
+* * *
+
+## Part 2: Research question
+The constitution of the United States allows Americans to hold guns, and the debate about whether guns should be banned has intensified.I wonder if there's a difference between the annual income of a family with and without a gun.
+
+The variables use in this project
+1.owngun: the question is 'Do you happen to have in your home (or garage) any guns or revolvers?'. the answer is as follows
+
+<1> Yes
+
+<2> No
+
+<3> Refused
+
+<4> NA
+
+2.coninc: Inﬂation-adjusted family income.use this variable we could analyze the survey data without the impact of inflation on the income.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+1.Select the relevent variables.
+In this project, we need only two variables, owngun and coninc, so we select these two variables and remove the missing value from the analysis.
+```{r}
+gss_sub <- gss %>% filter(!is.na(coninc) & !is.na(owngun)) %>% select(owngun,coninc)
+dim(gss_sub)
+```
+
+2.Coninc distribution
+```{r}
+ggplot(data = gss_sub, aes(x = coninc)) + geom_histogram() + facet_wrap(~ owngun)
+```
+
+Observations:
+
+<1>.Very few people choose to refuse to answer the question of whether they have guns in home.
+
+<2>.With regard to have guns or revolvers in home(or garage),Whether the answer is yes or no, the distribution of total family income with inflation correction is righ skewed.
+
+<3>.It seems more people do not have any guns or revolvers in home(or garage).
+
+* * *
+
+## Part 4: Inference
+1.State Hypothesis
+Null hypothesis: 
+The population mean of total family income with inflation correction is same for people do or do not have guns or revolvers in home(or garage).
+Alternative hypothesis: 
+The population mean of total family income with inflation correction is different for people do or do not have guns or revolvers in home(or garage).
+
+As we have 3 groups(more than 2 groups) of owngun variable, we should choose ANOVA(analysis of variance) to handle it.Next we need to check the condition of ANOVA.
+
+2.Check Conditions
+2.1. Independence:
+The GSS dataset is generated from a random sample survey, So we can assuming that the respondent are independent within and across groups.
+2.2. Nearly normal:
+The distribution should be nearly normal.
+We could use the Q-Q plot to check whether the distributions are normal or not.
+```{r}
+gun = c('Yes','No','Refused')
+for (i in 1:3) {
+     df = gss_sub %>% filter(owngun == gun[i])
+     qqnorm(df$coninc, main = gun[i])
+     qqline(df$coninc)
+}
+
+```
+
+Observations:
+There are obvious deviation from standard normal distribution in 'Yes' and 'No' groups.especially in the upper quantile, This deviation accord with the right skewed distribution we observed in the histogram plot.But those two groups have much more respondents than 30, thus we consider the sampling distribution of these are nearly noraml.
+
+2.3. Variability
+The variability across the groups should be about equal.
+We could use the side by side boxplot to check it.
+```{r}
+ggplot(data = gss_sub,aes(x = owngun, y = coninc)) + geom_boxplot(aes(fill = owngun))
+```
+
+Observations:
+Those 3 groups share the nearly same variability.
+
+Based on the above observations, the conditions for apply ANOVA is basiclly satisfied.
+
+3.ANOVA
+```{r}
+anova(lm(coninc ~ owngun, data = gss_sub))
+```
+
+The F value is 252.28, and the P vaue is so close to 0,we have strong evidence that at least one pair of the owngun groups have different mean inflation corrected incomes. next we will use pairwise t test.
+In pariwise t test, the significance level should be adjusted, we use the Bonnferonni correction
+```{r}
+pairwise.t.test(gss_sub$coninc, gss_sub$owngun, p.adj = 'bonferroni')
+```
+
+Observations:
+
+1.the adjusted significance level is 0.05/3 = 0.0167, only one pair have p value less than this, that is Yes-No.
+
+2.the P value of Yes-No is very close to 0, we have strong evidence that the mean total inflation-corrected family income for people do or do not have guns or revolvers in home(or garage) are different.
+
+4.Hypothesis Test
+Now we need to choose 'Yes' and 'No' in variable owngun,and make it as character.
+```{r}
+gss_sub %>% filter(owngun == 'Yes' | owngun == 'No') -> gss_ht
+gss_ht$owngun <- as.character(gss_ht$owngun)
+
+dim(gss_ht)
+```
+Next we caculate it.
+```{r}
+inference(y = coninc, x = owngun, data = gss_ht, statistic = 'mean', type = 'ci', conf_level = 0.95, method = 'theoretical',order = c('Yes', 'No'))
+```
+
+The 95% confident interval for the mean total family income difference between have gun and don't have gun is (8262.1757 , 9839.8451), value 0 is not included in this interval, the null hypothesis that the population mean of total family income with inflation correction is same for people do or do not have guns or revolvers in home(or garage) would be rejected.
+
+5.Results
+From ANOVA and pairwise t test, we find that the mean total family income between people have or don't have guns or revolvers in home(or garage) are different.From exoloratory data analysis, we find that the average income is higher of people who have guns or revolvers in home(or garage) compare to who don't have.We are 95% confident that the mean difference between total inflation-corrected family income of people who have guns or revolvers in home(or garage) compare to who don't have is (8262.1757 , 9839.8451) US dollars every year.
